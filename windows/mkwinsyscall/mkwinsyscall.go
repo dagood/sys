@@ -488,7 +488,8 @@ func newFn(s string) (*Fn, error) {
 		f.dllname = a[0]
 		f.dllfuncname = a[1]
 	default:
-		return nil, errors.New("Could not extract dll name from \"" + f.src + "\"")
+		f.dllname = strings.Join(a[:len(a)-1], ".")
+		f.dllfuncname = a[len(a)-1]
 	}
 	if n := f.dllfuncname; strings.HasSuffix(n, "?") {
 		f.dllfuncname = n[:len(n)-1]
@@ -503,6 +504,10 @@ func (f *Fn) DLLName() string {
 		return "kernel32"
 	}
 	return f.dllname
+}
+
+func (f *Fn) DLLNameIdentifier() string {
+	return strings.ReplaceAll(f.DLLName(), ".", "_")
 }
 
 // DLLName returns DLL function name for function f.
@@ -650,6 +655,11 @@ func (f *Fn) HelperName() string {
 	return "_" + f.Name
 }
 
+type DLL struct {
+	Name       string
+	Identifier string
+}
+
 // Source files and functions.
 type Source struct {
 	Funcs           []*Fn
@@ -699,17 +709,19 @@ func ParseFiles(fs []string) (*Source, error) {
 }
 
 // DLLs return dll names for a source set src.
-func (src *Source) DLLs() []string {
+func (src *Source) DLLs() []DLL {
 	uniq := make(map[string]bool)
-	r := make([]string, 0)
+	r := make([]DLL, 0)
 	for _, f := range src.Funcs {
-		name := f.DLLName()
+		name := f.DLLNameIdentifier()
 		if _, found := uniq[name]; !found {
 			uniq[name] = true
-			r = append(r, name)
+			r = append(r, DLL{f.DLLName(), f.DLLNameIdentifier()})
 		}
 	}
-	sort.Strings(r)
+	sort.Slice(r, func(i, j int) bool {
+		return r[i].Identifier < r[j].Identifier
+	})
 	return r
 }
 
@@ -936,10 +948,10 @@ var (
 
 {{/* help functions */}}
 
-{{define "dlls"}}{{range .DLLs}}	mod{{.}} = {{newlazydll .}}
+{{define "dlls"}}{{range .DLLs}}	mod{{.Identifier}} = {{newlazydll .Name}}
 {{end}}{{end}}
 
-{{define "funcnames"}}{{range .DLLFuncNames}}	proc{{.DLLFuncName}} = mod{{.DLLName}}.NewProc("{{.DLLFuncName}}")
+{{define "funcnames"}}{{range .DLLFuncNames}}	proc{{.DLLFuncName}} = mod{{.DLLNameIdentifier}}.NewProc("{{.DLLFuncName}}")
 {{end}}{{end}}
 
 {{define "helperbody"}}
