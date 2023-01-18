@@ -507,7 +507,7 @@ func (f *Fn) DLLName() string {
 }
 
 func (f *Fn) DLLNameIdentifier() string {
-	return strings.ReplaceAll(f.DLLName(), ".", "_")
+	return strings.ReplaceAll(strings.ReplaceAll(f.DLLName(), ".", "_"), "-", "_")
 }
 
 // DLLName returns DLL function name for function f.
@@ -559,7 +559,7 @@ func (f *Fn) SyscallParamCount() int {
 	case n <= 15:
 		return 15
 	default:
-		panic("too many arguments to system call")
+		panic("too many arguments to system call " + f.dllfuncname)
 	}
 }
 
@@ -885,7 +885,16 @@ func main() {
 
 	data, err := format.Source(buf.Bytes())
 	if err != nil {
-		log.Fatal(err)
+		formatErr := err
+		f, err := os.CreateTemp("", "mkwinsyscall-generated-*.go")
+		if err != nil {
+			log.Fatalf("failed to format source: %v, and unable to create temp file to store pre-formatted source: %v", formatErr, err)
+		}
+		_, err = f.Write(buf.Bytes())
+		if err != nil {
+			log.Fatalf("failed to format source: %v and unable to write source to temp file: %v", formatErr, err)
+		}
+		log.Fatalf("failed to format source: %v; wrote unformatted source to %v", formatErr, f.Name())
 	}
 	if *filename == "" {
 		_, err = os.Stdout.Write(data)
